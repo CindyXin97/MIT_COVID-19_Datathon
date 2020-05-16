@@ -6,7 +6,7 @@ nyt_data: county-level COVID statistics
 jp: jail population, surrounding county population
 full data: nyt_data and jp merged; jail population, cases, deaths for each county over time
 ```{r}
-nyt_data = read_csv('NYT_data/us-counties.csv') # https://github.com/nytimes/covid-19-data
+nyt_data = read.csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv')
 jp = read_csv('https://raw.githubusercontent.com/vera-institute/jail-population-data/master/jail_population.csv')
 jp <- jp %>% rename(county = county_name) %>% rename(state=state_name) %>% arrange(date)
 jp$county<-str_remove(jp$county," County")
@@ -17,7 +17,7 @@ full_data <- merge(jp,nyt_data) %>%
 #full_data <- merge(jp,nyt_data,by = c('date','county','state')) %>% select(date,county,state,fips,jail_population,resident_population,cases,deaths,jail_incarceration_rate_per_100k,urbanicity)
 full_data %>% arrange(county,state)
 
-write.csv(full_data,"jail_county_df.csv")
+#write.csv(full_data,"jail_county_df.csv")
 ```
 Cluster: predict covid rates, average increase? something as a function of incaraceration rate, urbanicity, jail population
 
@@ -153,7 +153,7 @@ nyt_with_prisons <- merge(nytdf, prison_counties_frac_released, all.x=TRUE) %>% 
 prison_pop_df <- merge(nyt_with_prisons,county_pop,all.x=TRUE)
 #nyt_with_prisons
 #prison_pop_df
-write.csv(prison_pop_df,"prison_county_df.csv")
+#write.csv(prison_pop_df,"prison_county_df.csv")
 
 prison_counties <- prison_pop_df %>% filter(prison_county==1)
 #prison_counties
