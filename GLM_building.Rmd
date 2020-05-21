@@ -1,0 +1,140 @@
+```{r}
+library(tidyverse)
+setwd("~/Documents/Python/Datathon/MIT_COVID-19_Datathon")
+```
+
+nyt_data: county-level COVID statistics
+```{r}
+nyt_data = read_csv('NYT_data/us-counties.csv') # https://github.com/nytimes/covid-19-data
+nyt_data
+```
+
+
+Prison analysis
+prison_df: state, prison name, and county
+```{r}
+prisons <- read_csv('prison_boundaries.csv')
+prisons$VAL_DATE <- as.Date(prisons$VAL_DATE)
+str_list <- paste(c('CORRECTION','PRISON'), collapse="|")
+prison_df <- prisons %>% filter(grepl(str_list,NAME)) %>%
+  select(NAME,STATE,COUNTY,POPULATION,CAPACITY,COUNTYFIPS) %>% 
+  mutate(POPULATION = ifelse(POPULATION<0, NA, POPULATION)) %>%  # convert negative values to NA
+  mutate(CAPACITY = ifelse(CAPACITY<0, NA, CAPACITY)) %>%  # convert negative values to NA
+  mutate(fullness = POPULATION/CAPACITY) %>%
+  group_by(COUNTYFIPS) %>% 
+  mutate(prison_pop = sum(POPULATION)) %>%     # sum over all prisons in a county
+  mutate(prison_capacity = sum(CAPACITY)) %>%  # sum over all prisons in a county
+  mutate(prison_fullness = mean(fullness)) %>%  # calculate average prison fullness
+  select(STATE,COUNTY,prison_pop,prison_capacity,prison_fullness,COUNTYFIPS) %>% unique()
+  
+prison_df
+```
+
+Get the states and their abbreviations, add State column to prison_df
+```{r}
+statenames <- read_csv('state_abbreviations.csv') %>% select(State,Code) %>% rename(STATE=Code)
+prison_df <- merge(prison_df,statenames,all.x=TRUE)
+prison_df
+```
+
+pr: state, fraction of prison population released
+prison_counties_frac_released: counties with prisons, fraction of prisoners released statewide
+frac_released = releases/prior_pop
+```{r}
+read_csv('covid_prison_releases.csv')
+
+pr <- read_csv('covid_prison_releases.csv') %>%
+  rename(prior_pop = 'Population Prior to Releases',releases = "Overall Pop. Reduction / \nTotal Number of Releases") %>% 
+  select(State,Facility,prior_pop,releases) %>% 
+  filter(Facility=='Statewide') %>%              # not considering national-level releases
+  mutate(releases = as.numeric(releases)) %>%   
+  mutate(frac_released = releases/prior_pop) %>% # fraction released = # of releases / prior prison population
+  select(State,frac_released) %>% drop_na()
+pr
+
+prison_counties_frac_released <- merge(prison_df, pr,by='State',all.x = TRUE) %>%
+  mutate(frac_released = ifelse(is.na(frac_released),0,frac_released)) %>% # if a state has no reported releases, put 0 for frac_released
+  select(COUNTYFIPS,frac_released,prison_pop,prison_capacity,prison_fullness,State) %>%unique()
+prison_counties_frac_released
+```
+
+
+data for GLMs
+
+```{r}
+county_pop <- read_csv('new_county_demographics_df.csv') %>% rename(COUNTYFIPS = fips)
+county_pop
+
+nyt_data
+
+nytdf <- nyt_data %>%
+  mutate(prison_county = ifelse(fips %in% prison_counties_frac_released$COUNTYFIPS,1,0)) %>% # add column of 0/1: 1 if county has prison, 0 else
+  rename(COUNTYFIPS = fips) %>%
+  unique()
+nytdf
+
+nyt_with_prisons <- merge(nytdf, prison_counties_frac_released, all.x=TRUE) %>% group_by(COUNTYFIPS) %>%
+  arrange(COUNTYFIPS,date) %>%
+  mutate(diff_cases = cases-lag(cases,7)) %>%
+  filter(date >= as.Date('2020-03-01')) %>%
+  select(COUNTYFIPS,date,cases,prison_county,frac_released,diff_cases,prison_pop,prison_capacity,prison_fullness) %>%
+  unique()
+
+prison_pop_df <- merge(nyt_with_prisons,county_pop,all.x=TRUE) %>% 
+  group_by(COUNTYFIPS) %>%
+  mutate(cases_per_capita = cases/tot_pop) %>%
+  arrange(COUNTYFIPS,date) %>%
+  mutate(cases_per_capita_7_days_ago = lag(cases_per_capita,7)) %>% filter(!is.na(diff_cases)) %>%
+  mutate(prison_pop = ifelse(is.na(prison_pop),0,prison_pop))
+prison_pop_df
+
+prison_counties <- prison_pop_df %>% filter(prison_county==1)
+prison_counties
+
+```
+
+Models assessing the impact of having a prison in a given county
+Model 1:
+difference in cases (cases from today - cases from 7 days ago) ~ total county population, indicator function (contains a prison = 1, doesn't contain a prison = 0), county population density
+
+Model 2:
+difference in cases (cases from today - cases from 7 days ago) ~ total prison population (0 if no prison in county), total county population, cases per capita from 7 days ago, population density
+
+```{r}
+
+model1 <- glm(diff_cases ~ tot_pop + prison_county + population_density, data = prison_pop_df)
+summary(model1)
+
+model2 <- glm(diff_cases ~  prison_pop + tot_pop + cases_per_capita_7_days_ago + population_density, data = prison_pop_df)
+summary(model2)
+
+#R2 values
+with(summary(model1), 1 - deviance/null.deviance)
+with(summary(model2), 1 - deviance/null.deviance)
+```
+
+Models assessing the impact of release rates in counties with prisons
+
+
+Model A:
+Restricted to counties containing a prison
+difference in cases (cases from today - cases from 7 days ago) ~ total county population, fraction of prisoners released statewide, county population density
+
+Model B:
+Restricted to counties containing a prison
+difference in cases (cases from today - cases from 7 days ago) ~ total county population, fraction of prisoners released statewide, county population density, fraction of population in high risk age group
+
+```{r}
+prison_counties
+
+modelA <- glm(diff_cases ~ tot_pop + frac_released + population_density, data = prison_counties)
+summary(modelA)
+
+modelB <- glm(diff_cases ~ tot_pop + frac_released +  population_density + lowrisk_agegroup_perc,data = prison_counties)
+summary(modelB)
+
+# R2 values
+with(summary(modelA), 1 - deviance/null.deviance)
+with(summary(modelB), 1 - deviance/null.deviance)
+
+```
