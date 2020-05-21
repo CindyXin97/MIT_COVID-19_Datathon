@@ -76,8 +76,9 @@ nytdf
 nyt_with_prisons <- merge(nytdf, prison_counties_frac_released, all.x=TRUE) %>% group_by(COUNTYFIPS) %>%
   arrange(COUNTYFIPS,date) %>%
   mutate(diff_cases = cases-lag(cases,7)) %>%
+  mutate(frac_change_cases = (cases-lag(cases,7))/lag(cases,7)) %>%
   filter(date >= as.Date('2020-03-01')) %>%
-  select(COUNTYFIPS,date,cases,prison_county,frac_released,diff_cases,prison_pop,prison_capacity,prison_fullness) %>%
+  select(COUNTYFIPS,date,cases,prison_county,frac_released,diff_cases,frac_change_cases,prison_pop,prison_capacity,prison_fullness) %>%
   unique()
 
 prison_pop_df <- merge(nyt_with_prisons,county_pop,all.x=TRUE) %>% 
@@ -136,5 +137,35 @@ summary(modelB)
 # R2 values
 with(summary(modelA), 1 - deviance/null.deviance)
 with(summary(modelB), 1 - deviance/null.deviance)
-
+extractAIC(modelA)
+extractAIC(modelB)
 ```
+
+Repeat these analyses using frac_change_cases as the target variable instead of diff_cases
+
+```{r}
+model1 <- glm(frac_change_cases ~ tot_pop + prison_county + population_density, data = prison_pop_df)
+summary(model1)
+
+model2 <- glm(frac_change_cases ~  prison_pop + tot_pop + cases_per_capita_7_days_ago + population_density, data = prison_pop_df)
+summary(model2)
+
+#R2 values
+with(summary(model1), 1 - deviance/null.deviance)
+with(summary(model2), 1 - deviance/null.deviance)
+```
+
+```{r}
+modelA <- glm(frac_change_cases ~ tot_pop + frac_released + population_density, data = prison_counties)
+summary(modelA)
+
+modelB <- glm(frac_change_cases ~ tot_pop + frac_released +  population_density + lowrisk_agegroup_perc,data = prison_counties)
+summary(modelB)
+
+# R2 values
+with(summary(modelA), 1 - deviance/null.deviance)
+with(summary(modelB), 1 - deviance/null.deviance)
+extractAIC(modelA)
+extractAIC(modelB)
+```
+
