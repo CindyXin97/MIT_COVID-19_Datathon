@@ -150,10 +150,11 @@ nyt_with_prisons <- merge(nytdf, prison_counties_frac_released, all.x=TRUE) %>% 
 
 #nyt_with_prisons
 
-prison_pop_df <- merge(nyt_with_prisons,county_pop,all.x=TRUE)
+prison_pop_df <- merge(nyt_with_prisons,county_pop,all.x=TRUE) #%>% mutate(cases_per_capita = cases/tot_pop) %>%
+  #mutate(cases_per_capita_7_days_ago = lag(cases_per_capita,7))
 #nyt_with_prisons
-#prison_pop_df
 write.csv(prison_pop_df,"prison_county_df.csv")
+prison_pop_df
 
 prison_counties <- prison_pop_df %>% filter(prison_county==1)
 #prison_counties
@@ -204,7 +205,9 @@ model4 <- glm(diff_cases ~ tot_pop + int_prison_county_frac_released + prison_co
 model5 <- glm(diff_cases ~ tot_pop + frac_released + population_density + prison_fullness, data = prison_counties)
 model6 <- glm(diff_cases ~ tot_pop + frac_released + population_density + prison_fullness + highrisk_agegroup_perc, data = prison_counties)
 model7 <- glm(diff_cases ~ tot_pop + frac_released + population_density + highrisk_agegroup_perc, data = prison_counties)
+model8 <- glm(diff_cases ~ tot_pop + frac_released + population_density + prison_capacity, data = prison_counties)
 
+summary(model8)
 summary(model7)
 summary(model6)
 summary(model5)
