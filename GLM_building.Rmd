@@ -1,12 +1,11 @@
 ```{r}
 library(tidyverse)
-# setwd("~/Documents/Python/Datathon/MIT_COVID-19_Datathon")
+setwd("~/Documents/Python/Datathon/MIT_COVID-19_Datathon")
 ```
 
 nyt_data: county-level COVID statistics
 ```{r}
-#nyt_data = read_csv('NYT_data/us-counties.csv') # https://github.com/nytimes/covid-19-data
-nyt_data = read.csv('https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv')
+nyt_data = read_csv('NYT_data/us-counties.csv') # https://github.com/nytimes/covid-19-data
 nyt_data
 ```
 
@@ -14,7 +13,7 @@ nyt_data
 Prison analysis
 prison_df: state, prison name, and county
 ```{r}
-prisons <- read_csv('Data/prison_boundaries.csv')
+prisons <- read_csv('prison_boundaries.csv')
 prisons$VAL_DATE <- as.Date(prisons$VAL_DATE)
 str_list <- paste(c('CORRECTION','PRISON'), collapse="|")
 prison_df <- prisons %>% filter(grepl(str_list,NAME)) %>%
@@ -33,7 +32,7 @@ prison_df
 
 Get the states and their abbreviations, add State column to prison_df
 ```{r}
-statenames <- read_csv('Data/state_abbreviations.csv') %>% select(State,Code) %>% rename(STATE=Code)
+statenames <- read_csv('state_abbreviations.csv') %>% select(State,Code) %>% rename(STATE=Code)
 prison_df <- merge(prison_df,statenames,all.x=TRUE)
 prison_df
 ```
@@ -42,9 +41,9 @@ pr: state, fraction of prison population released
 prison_counties_frac_released: counties with prisons, fraction of prisoners released statewide
 frac_released = releases/prior_pop
 ```{r}
-#read_csv('Data/covid_prison_releases.csv')
+read_csv('covid_prison_releases.csv')
 
-pr <- read_csv('Data/covid_prison_releases.csv') %>%
+pr <- read_csv('covid_prison_releases.csv') %>%
   rename(prior_pop = 'Population Prior to Releases',releases = "Overall Pop. Reduction / \nTotal Number of Releases") %>% 
   select(State,Facility,prior_pop,releases) %>% 
   filter(Facility=='Statewide') %>%              # not considering national-level releases
@@ -63,7 +62,7 @@ prison_counties_frac_released
 data for GLMs
 
 ```{r}
-county_pop <- read_csv('Data/county_demographics_df.csv') %>% rename(COUNTYFIPS = fips)
+county_pop <- read_csv('new_county_demographics_df.csv') %>% rename(COUNTYFIPS = fips)
 county_pop
 
 nyt_data
