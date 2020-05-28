@@ -41,9 +41,7 @@ pr: state, fraction of prison population released
 prison_counties_frac_released: counties with prisons, fraction of prisoners released statewide
 frac_released = releases/prior_pop
 ```{r}
-read_csv('covid_prison_releases.csv')
-
-pr <- read_csv('covid_prison_releases.csv') %>%
+pr <- read_csv('Data/covid_prison_releases.csv') %>%
   rename(prior_pop = 'Population Prior to Releases',releases = "Overall Pop. Reduction / \nTotal Number of Releases") %>% 
   select(State,Facility,prior_pop,releases) %>% 
   filter(Facility=='Statewide') %>%              # not considering national-level releases
@@ -78,12 +76,13 @@ nyt_with_prisons <- merge(nytdf, prison_counties_frac_released, all.x=TRUE) %>% 
   mutate(diff_cases = cases-lag(cases,7)) %>%
   mutate(frac_change_cases = (cases-lag(cases,7))/lag(cases,7)) %>%
   filter(date >= as.Date('2020-03-01')) %>%
-  select(COUNTYFIPS,date,cases,prison_county,frac_released,diff_cases,frac_change_cases,prison_pop,prison_capacity,prison_fullness) %>%
+  select(COUNTYFIPS,date,cases,deaths,prison_county,frac_released,diff_cases,frac_change_cases,prison_pop,prison_capacity,prison_fullness) %>%
   unique()
 
 prison_pop_df <- merge(nyt_with_prisons,county_pop,all.x=TRUE) %>% 
   group_by(COUNTYFIPS) %>%
   mutate(cases_per_capita = cases/tot_pop) %>%
+  mutate(deaths_per_capita = deaths/tot_pop) %>%
   arrange(COUNTYFIPS,date) %>%
   mutate(cases_per_capita_7_days_ago = lag(cases_per_capita,7)) %>% filter(!is.na(diff_cases)) %>%
   mutate(prison_pop = ifelse(is.na(prison_pop),0,prison_pop))
@@ -93,6 +92,11 @@ prison_counties <- prison_pop_df %>% filter(prison_county==1)
 prison_counties
 
 ```
+
+```{r}
+write.csv(prison_pop_df,'Data/full_population_and_prison_data')
+```
+
 
 Models assessing the impact of having a prison in a given county
 Model 1:
@@ -169,3 +173,31 @@ extractAIC(modelA)
 extractAIC(modelB)
 ```
 
+```{r}
+prison_pop_df
+
+county_pops <- prison_pop_df %>% select(COUNTYFIPS,tot_pop) %>% drop_na()
+ggplot(county_pops) + geom_histogram(aes(tot_pop),bins=100)+ xlim(0,100000)
+
+county_pops %>% filter(tot_pop<100) 
+```
+
+
+```{r}
+modelx <- glm(cases_per_capita ~ tot_pop + prison_county + population_density, data = prison_pop_df)
+summary(modelx)
+
+modely <- glm(cases_per_capita ~  prison_pop + tot_pop + cases_per_capita_7_days_ago + population_density, data = prison_pop_df)
+summary(modely)
+
+modelz <- glm(deaths_per_capita ~ tot_pop + prison_county + population_density, data = prison_pop_df)
+summary(modelz)
+
+#R2 values
+with(summary(modelx), 1 - deviance/null.deviance)
+with(summary(modely), 1 - deviance/null.deviance)
+with(summary(modelz), 1 - deviance/null.deviance)
+```
+
+
+target variable as deaths: deaths prevented, numbers of cases prevented (large), maybe not even week to week --> cumulative?
