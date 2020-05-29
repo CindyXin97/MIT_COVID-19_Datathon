@@ -5,8 +5,8 @@ setwd("~/Documents/Python/Datathon/MIT_COVID-19_Datathon")
 
 nyt_data: county-level COVID statistics
 ```{r}
-nyt_data = read_csv('NYT_data/us-counties.csv') # https://github.com/nytimes/covid-19-data
-nyt_data
+nyt_data = read_csv('~/Documents/Python/Datathon/covid-19-data/us-counties.csv') 
+# https://github.com/nytimes/covid-19-data
 ```
 
 
@@ -76,7 +76,7 @@ nyt_with_prisons <- merge(nytdf, prison_counties_frac_released, all.x=TRUE) %>% 
   mutate(diff_cases = cases-lag(cases,7)) %>%
   mutate(frac_change_cases = (cases-lag(cases,7))/lag(cases,7)) %>%
   filter(date >= as.Date('2020-03-01')) %>%
-  select(COUNTYFIPS,date,cases,deaths,prison_county,frac_released,diff_cases,frac_change_cases,prison_pop,prison_capacity,prison_fullness) %>%
+  select(COUNTYFIPS,county,state,date,cases,deaths,prison_county,frac_released,diff_cases,frac_change_cases,prison_pop,prison_capacity,prison_fullness) %>%
   unique()
 
 prison_pop_df <- merge(nyt_with_prisons,county_pop,all.x=TRUE) %>% 
@@ -94,7 +94,7 @@ prison_counties
 ```
 
 ```{r}
-write.csv(prison_pop_df,'Data/full_population_and_prison_data')
+write.csv(prison_pop_df,'Data/full_population_and_prison_data.csv')
 ```
 
 
@@ -106,16 +106,11 @@ Model 2:
 difference in cases (cases from today - cases from 7 days ago) ~ total prison population (0 if no prison in county), total county population, cases per capita from 7 days ago, population density
 
 ```{r}
-
-model1 <- glm(diff_cases ~ tot_pop + prison_county + population_density, data = prison_pop_df)
+model1 <- lm(diff_cases ~ tot_pop + prison_county + population_density, data = prison_pop_df)
 summary(model1)
 
-model2 <- glm(diff_cases ~  prison_pop + tot_pop + cases_per_capita_7_days_ago + population_density, data = prison_pop_df)
+model2 <- lm(diff_cases ~  prison_pop + tot_pop + cases_per_capita_7_days_ago + population_density, data = prison_pop_df)
 summary(model2)
-
-#R2 values
-with(summary(model1), 1 - deviance/null.deviance)
-with(summary(model2), 1 - deviance/null.deviance)
 ```
 
 Models assessing the impact of release rates in counties with prisons
@@ -132,72 +127,130 @@ difference in cases (cases from today - cases from 7 days ago) ~ total county po
 ```{r}
 prison_counties
 
-modelA <- glm(diff_cases ~ tot_pop + frac_released + population_density, data = prison_counties)
+modelA <- lm(diff_cases ~ tot_pop + frac_released + population_density, data = prison_counties)
 summary(modelA)
 
-modelB <- glm(diff_cases ~ tot_pop + frac_released +  population_density + lowrisk_agegroup_perc,data = prison_counties)
+modelB <- lm(diff_cases ~ tot_pop + frac_released +  population_density + lowrisk_agegroup_perc,data = prison_counties)
 summary(modelB)
 
-# R2 values
-with(summary(modelA), 1 - deviance/null.deviance)
-with(summary(modelB), 1 - deviance/null.deviance)
-extractAIC(modelA)
-extractAIC(modelB)
 ```
 
 Repeat these analyses using frac_change_cases as the target variable instead of diff_cases
 
 ```{r}
-model1 <- glm(frac_change_cases ~ tot_pop + prison_county + population_density, data = prison_pop_df)
+model1 <- lm(frac_change_cases ~ tot_pop + prison_county + population_density, data = prison_pop_df)
 summary(model1)
 
-model2 <- glm(frac_change_cases ~  prison_pop + tot_pop + cases_per_capita_7_days_ago + population_density, data = prison_pop_df)
+model2 <- lm(frac_change_cases ~  prison_pop + tot_pop + cases_per_capita_7_days_ago + population_density, data = prison_pop_df)
 summary(model2)
-
-#R2 values
-with(summary(model1), 1 - deviance/null.deviance)
-with(summary(model2), 1 - deviance/null.deviance)
 ```
 
 ```{r}
-modelA <- glm(frac_change_cases ~ tot_pop + frac_released + population_density, data = prison_counties)
+modelA <- lm(frac_change_cases ~ tot_pop + frac_released + population_density, data = prison_counties)
 summary(modelA)
 
 modelB <- glm(frac_change_cases ~ tot_pop + frac_released +  population_density + lowrisk_agegroup_perc,data = prison_counties)
 summary(modelB)
 
-# R2 values
-with(summary(modelA), 1 - deviance/null.deviance)
-with(summary(modelB), 1 - deviance/null.deviance)
-extractAIC(modelA)
-extractAIC(modelB)
-```
-
-```{r}
-prison_pop_df
-
-county_pops <- prison_pop_df %>% select(COUNTYFIPS,tot_pop) %>% drop_na()
-ggplot(county_pops) + geom_histogram(aes(tot_pop),bins=100)+ xlim(0,100000)
-
-county_pops %>% filter(tot_pop<100) 
 ```
 
 
 ```{r}
-modelx <- glm(cases_per_capita ~ tot_pop + prison_county + population_density, data = prison_pop_df)
+modelx <- lm(cases_per_capita ~ tot_pop + prison_county + population_density, data = prison_pop_df)
 summary(modelx)
 
-modely <- glm(cases_per_capita ~  prison_pop + tot_pop + cases_per_capita_7_days_ago + population_density, data = prison_pop_df)
+# this one has an R^2 value of 0.9!
+modely <- lm(cases_per_capita ~  prison_pop + tot_pop + cases_per_capita_7_days_ago + population_density, data = prison_pop_df)
 summary(modely)
 
-modelz <- glm(deaths_per_capita ~ tot_pop + prison_county + population_density, data = prison_pop_df)
+modelz <- lm(deaths_per_capita ~ tot_pop + prison_county + population_density, data = prison_pop_df)
 summary(modelz)
 
-#R2 values
-with(summary(modelx), 1 - deviance/null.deviance)
-with(summary(modely), 1 - deviance/null.deviance)
-with(summary(modelz), 1 - deviance/null.deviance)
+modelw <- lm(deaths_per_capita ~  prison_pop + tot_pop + cases_per_capita_7_days_ago + population_density, data = prison_pop_df)
+summary(modelw)
+```
+
+Working with ACLU Massachusetts dataset: ACLU.csv gives for each considered DOC facility on each date the total population, detainees tested/positive, staff tested/positive, # released, and fips county code.
+
+ACLU_cases dataframe gives date, county fips code, county-wide prisoner cases and cumulative sum of county-wide prisoner cases
+
+mass_prison_counties adds information from prison_pop_df to ACLU_cases: we now have county-level cases, deaths, and population demographics
+
+```{r}
+# excluding hospitals, rehabilitation centers
+DOC_Facility = c('MCI-Norfolk','NCCI-Gardn','OCCC','MCI-CJ','MCI-C','Pondville','MCI-F',
+                       'MCI-Shirley','MCI-Shirley Min','MTC','SMCC','SBCC')
+fips = c(25021,25027,25023,25021,25017,25021,25017,25017,25017,25023,25017,25017)
+facilities_fips <- data.frame(DOC_Facility,fips)
+facilities_fips
+
+ACLU <- read_csv('ACLU_data.csv')
+names(ACLU) <- str_replace_all(names(ACLU)," ","_")
+ACLU <- merge(ACLU,facilities_fips,all.y=TRUE) %>% mutate(Date = as.Date(Date,"%m/%d/%y"))
+ACLU <- ACLU[,c(1:11,27)] # remove empty columns
+ACLU
+write.csv(ACLU,'Data/ACLU_prison_data.csv')
+
+ACLU_cases <- ACLU  %>% 
+  select(Date,DOC_Facility,fips,`N_Positive_-_Detainees/Inmates`) %>%
+  mutate(`N_Positive_-_Detainees/Inmates` = replace_na(`N_Positive_-_Detainees/Inmates`, 0))%>% # replace NA with 0 to get total counts
+  group_by(fips,Date) %>%
+  mutate(county_wide_prisoner_cases = sum(`N_Positive_-_Detainees/Inmates`)) %>% # sum over all cases in a county
+  arrange(fips,Date) %>% 
+  select(Date,fips,county_wide_prisoner_cases) %>%
+  rename(COUNTYFIPS = fips,date = Date) %>% unique() %>% ungroup %>% group_by(COUNTYFIPS) %>%
+  mutate(cumulative_county_wide_prisoner_cases = cumsum(county_wide_prisoner_cases)) # cumuylative cases in a county
+ACLU_cases
+
+mass_prison_counties <- merge(prison_pop_df,ACLU_cases,all.y=TRUE)
+mass_prison_counties
+```
+
+```{r}
+modelx <- lm(cases ~ cumulative_county_wide_prisoner_cases+ tot_pop, data = mass_prison_counties)
+summary(modelx)
 ```
 
 
-target variable as deaths: deaths prevented, numbers of cases prevented (large), maybe not even week to week --> cumulative?
+This chunk shows that across all prisons, we only have data on 10 releases --> not powerful enough for our model. We'll have to either A) consider case data that we get from each prison or B) consider jail data.
+
+A) is likely not extremely useful given large gaps in testing
+```{r}
+tmp <- ACLU %>% select(fips,Date,N_Released) %>% mutate(N_Released = replace_na(N_Released,0))
+sum(tmp$N_Released)
+tmp <- read_csv('ACLU_data.csv')
+names(tmp) <- str_replace_all(names(tmp)," ","_")
+tmp <- tmp %>% select(Date,DOC_Facility,N_Released) %>% drop_na()
+sum(tmp$N_Released)
+```
+
+Now considering ACLU data for county jails: MA_aclu_data has date, county info, population demographics, county-level cases and deaths, release statistics
+
+```{r}
+aclu_data <- read_csv('ACLU_data_Counties_All_DOC.csv') %>% rename(county = County,date = Date) %>%
+  mutate(date = as.Date(date,"%m/%d/%y"))
+aclu_data <- aclu_data[,1:19]
+names(aclu_data) <- str_replace_all(names(aclu_data)," ","_")
+
+aclu_data <- aclu_data %>% filter(county != 'DOC') %>% # just look at county jails, not DOC
+  select(date,county,`N_Released_Pre-Trial`,N_Released_Sentenced)
+aclu_data[is.na(aclu_data)] = 0
+
+MA_prison_pop_df <- prison_pop_df %>% filter(state=='Massachusetts') %>%
+  filter(county %in% aclu_data$county)
+
+MA_aclu_data <- merge(MA_prison_pop_df,aclu_data)%>% group_by(county) %>% arrange(county,date)%>%
+  mutate(cumulative_pretrial_release = cumsum(`N_Released_Pre-Trial`))%>%
+  mutate(cumulative_sentenced_release = cumsum(N_Released_Sentenced)) %>%
+  mutate(total_release = cumulative_sentenced_release + cumulative_pretrial_release) %>%
+  select(date,county,COUNTYFIPS,tot_pop,cases,diff_cases,population_density,deaths,cumulative_sentenced_release,cumulative_pretrial_release,total_release,frac_change_cases)
+
+prison_pop_df
+MA_aclu_data
+```
+```{r}
+modelx <- lm(frac_change_cases ~ total_release + tot_pop, data = MA_aclu_data)
+summary(modelx)
+```
+
+Notes: I think the way I calculate R^2 is wrong
