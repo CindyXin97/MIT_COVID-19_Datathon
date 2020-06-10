@@ -63,7 +63,7 @@ data for GLMs
 county_pop <- read_csv('new_county_demographics_df.csv') %>% rename(COUNTYFIPS = fips)
 county_pop
 
-nyt_data
+nyt_data %>% arrange(fips,date)
 
 nytdf <- nyt_data %>%
   mutate(prison_county = ifelse(fips %in% prison_counties_frac_released$COUNTYFIPS,1,0)) %>% # add column of 0/1: 1 if county has prison, 0 else
@@ -73,30 +73,117 @@ nytdf
 
 nyt_with_prisons <- merge(nytdf, prison_counties_frac_released, all.x=TRUE) %>% group_by(COUNTYFIPS) %>%
   arrange(COUNTYFIPS,date) %>%
-  mutate(diff_cases = cases-lag(cases,7)) %>%
-  mutate(frac_change_cases = (cases-lag(cases,7))/lag(cases,7)) %>%
+  #mutate(diff_cases = cases-lag(cases,7)) %>%
+  mutate(daily_cases = cases-lag(cases,1)) %>%
+  #mutate(frac_change_cases = (cases-lag(cases,7))/lag(cases,7)) %>%
   filter(date >= as.Date('2020-03-01')) %>%
-  select(COUNTYFIPS,county,state,date,cases,deaths,prison_county,frac_released,diff_cases,frac_change_cases,prison_pop,prison_capacity,prison_fullness) %>%
-  unique()
+  select(COUNTYFIPS,county,state,date,cases,daily_cases,deaths,prison_county,frac_released,prison_pop,prison_capacity,prison_fullness) %>%
+  unique() %>% drop_na(COUNTYFIPS)
 
 prison_pop_df <- merge(nyt_with_prisons,county_pop,all.x=TRUE) %>% 
   group_by(COUNTYFIPS) %>%
   mutate(cases_per_capita = cases/tot_pop) %>%
   mutate(deaths_per_capita = deaths/tot_pop) %>%
   arrange(COUNTYFIPS,date) %>%
-  mutate(cases_per_capita_7_days_ago = lag(cases_per_capita,7)) %>% filter(!is.na(diff_cases)) %>%
-  mutate(prison_pop = ifelse(is.na(prison_pop),0,prison_pop))
+  #mutate(daily_cases_7_days_ago = lag(daily_cases,7)) %>%
+  #mutate(cases_per_capita_7_days_ago = lag(cases_per_capita,7)) %>% 
+  filter(!is.na(daily_cases)) %>%
+  mutate(prison_pop = ifelse(is.na(prison_pop),0,prison_pop)) %>%
+  filter(daily_cases >= 0)
+
 prison_pop_df
 
 prison_counties <- prison_pop_df %>% filter(prison_county==1)
 prison_counties
 
+
+#write.csv(prison_pop_df,'Data/full_population_and_prison_data.csv')
 ```
+
 
 ```{r}
-write.csv(prison_pop_df,'Data/full_population_and_prison_data.csv')
+single_county = prison_pop_df %>% filter(COUNTYFIPS == '01001')
+hist(single_county$daily_cases,20)
+
+sny <- prison_pop_df %>% filter(COUNTYFIPS=='36103')
+hist(sny$daily_cases,30)
 ```
 
+Need to use a Poisson model: Target variable is the daily incidence of cases.
+
+Incorporate history dependence: AIC analysis (probably) to figure out how many days in history to include.
+
+Goodness-of-fit analysis: see how the residuals are distributed over time, by prison county indicatior, location, etc. See if evenly dispersed
+
+This shows that as we increase the number of history terms, the AIC decreases. However, it's not completely fair as we're losing one data point per county each time we add a history term.
+```{r}
+aic_vec = c()
+J = 50
+for(j in 1:J){
+  print(j)
+  model_df <- prison_pop_df %>% select(COUNTYFIPS, date, daily_cases, tot_pop, prison_county, population_density, lowrisk_agegroup_perc)%>%
+    group_by(COUNTYFIPS) %>% arrange(COUNTYFIPS, date)
+  
+  for(i in 1:j){
+    varname <- paste("cases",i,sep="")
+    model_df <- model_df %>% mutate(!!varname := lag(daily_cases,i))
+  }
+  
+  model_df <- model_df %>% drop_na() %>% ungroup() %>% select(-COUNTYFIPS,-date)
+  poiss_model = glm(daily_cases ~ ., family=poisson, data = model_df)
+  
+  aic_vec <- c(aic_vec,poiss_model$aic)
+  
+}
+
+plot(1:J,aic_vec,type='l')
+```
+
+Set the number of history terms (here j = 7)
+```{r}
+j = 7
+model_df <- prison_pop_df %>% 
+  select(COUNTYFIPS, date, daily_cases, tot_pop, prison_county, population_density, lowrisk_agegroup_perc) %>%
+  group_by(COUNTYFIPS) %>% arrange(COUNTYFIPS, date)
+  
+for(i in 1:j){
+  varname <- paste("cases",i,sep="")
+  model_df <- model_df %>% mutate(!!varname := lag(daily_cases,i))
+}
+
+model_df <- model_df %>% drop_na() %>% ungroup() %>% select(-COUNTYFIPS,-date)
+poiss_model = glm(daily_cases ~ ., family=poisson, data = model_df)
+summary(poiss_model)
+```
+
+It's possible that if the above models work we can interpret it this way:
+a 0.84 coefficient for prison_county means we multiply the daily incidence of cases by 1 when no prison in the county or by e^0.84~=2 when there is a prison county --> daily incidence of cases doubles!
+
+Now consider just counties with prisons, examine the effect of statewide fraction released:
+interpret -1.37 coefficient on frac_released as "if we reduce the prison population by 25%, we can expect a 30% reduction in the surrounding county's COVID-19 cases"
+
+```{r}
+j = 7
+model_df <- prison_pop_df %>%
+  filter(prison_county==1) %>%
+  select(COUNTYFIPS, date, daily_cases, tot_pop, frac_released, population_density, lowrisk_agegroup_perc) %>%
+  group_by(COUNTYFIPS) %>% arrange(COUNTYFIPS, date)
+  
+for(i in 1:j){
+  varname <- paste("cases",i,sep="")
+  model_df <- model_df %>% mutate(!!varname := lag(daily_cases,i))
+}
+
+model_df <- model_df %>% drop_na() %>% ungroup() %>% select(-COUNTYFIPS,-date)
+poiss_model = glm(daily_cases ~ ., family=poisson, data = model_df)
+summary(poiss_model)
+
+```
+
+
+
+##########################################################################################################
+OLD MODELS ASSUMING NORMAL DISTRIBUTION
 
 Models assessing the impact of having a prison in a given county
 Model 1:
@@ -110,6 +197,12 @@ model1 <- lm(diff_cases ~ tot_pop + prison_county + population_density, data = p
 summary(model1)
 
 model2 <- lm(diff_cases ~  prison_pop + tot_pop + cases_per_capita_7_days_ago + population_density, data = prison_pop_df)
+summary(model2)
+
+model2 <- lm(cases_per_capita ~  prison_county + tot_pop + cases_per_capita_7_days_ago + population_density, data = prison_pop_df)
+summary(model2)
+
+model2 <- lm(cases_per_capita ~  prison_county + tot_pop + population_density, data = prison_pop_df)
 summary(model2)
 ```
 
@@ -125,9 +218,10 @@ Restricted to counties containing a prison
 difference in cases (cases from today - cases from 7 days ago) ~ total county population, fraction of prisoners released statewide, county population density, fraction of population in high risk age group
 
 ```{r}
-prison_counties
-
 modelA <- lm(diff_cases ~ tot_pop + frac_released + population_density, data = prison_counties)
+summary(modelA)
+
+modelA <- lm(cases_per_capita ~ tot_pop + frac_released + population_density + cases_per_capita_7_days_ago, data = prison_counties)
 summary(modelA)
 
 modelB <- lm(diff_cases ~ tot_pop + frac_released +  population_density + lowrisk_agegroup_perc,data = prison_counties)
@@ -160,6 +254,7 @@ modelx <- lm(cases_per_capita ~ tot_pop + prison_county + population_density, da
 summary(modelx)
 
 # this one has an R^2 value of 0.9!
+
 modely <- lm(cases_per_capita ~  prison_pop + tot_pop + cases_per_capita_7_days_ago + population_density, data = prison_pop_df)
 summary(modely)
 
@@ -233,8 +328,9 @@ aclu_data <- aclu_data[,1:19]
 names(aclu_data) <- str_replace_all(names(aclu_data)," ","_")
 
 aclu_data <- aclu_data %>% filter(county != 'DOC') %>% # just look at county jails, not DOC
-  select(date,county,`N_Released_Pre-Trial`,N_Released_Sentenced)
+  select(date,county,`N_Released_Pre-Trial`,N_Released_Sentenced,Total_Population)
 aclu_data[is.na(aclu_data)] = 0
+
 
 MA_prison_pop_df <- prison_pop_df %>% filter(state=='Massachusetts') %>%
   filter(county %in% aclu_data$county)
@@ -242,15 +338,28 @@ MA_prison_pop_df <- prison_pop_df %>% filter(state=='Massachusetts') %>%
 MA_aclu_data <- merge(MA_prison_pop_df,aclu_data)%>% group_by(county) %>% arrange(county,date)%>%
   mutate(cumulative_pretrial_release = cumsum(`N_Released_Pre-Trial`))%>%
   mutate(cumulative_sentenced_release = cumsum(N_Released_Sentenced)) %>%
-  mutate(total_release = cumulative_sentenced_release + cumulative_pretrial_release) %>%
-  select(date,county,COUNTYFIPS,tot_pop,cases,diff_cases,population_density,deaths,cumulative_sentenced_release,cumulative_pretrial_release,total_release,frac_change_cases)
+  mutate(cumulative_total_release = cumulative_sentenced_release + cumulative_pretrial_release) %>%
+  mutate(total_release = `N_Released_Pre-Trial` + N_Released_Sentenced) %>%
+  select(date,county,COUNTYFIPS,tot_pop,cases,cases_per_capita,diff_cases,population_density,deaths,cumulative_sentenced_release,cumulative_pretrial_release,total_release,Total_Population,frac_change_cases,cases_per_capita_7_days_ago) %>%
+  mutate(frac_released = total_release/Total_Population) %>% filter(Total_Population>0)
 
 prison_pop_df
 MA_aclu_data
 ```
+
+Tough to infer causality --> do we increase frac_released as we increase cases_per_capita because we're experiencing an overall increase? How could we show what the cases_per_capita would be if we released no detainees? include days since first case, something like that?
+
 ```{r}
 modelx <- lm(frac_change_cases ~ total_release + tot_pop, data = MA_aclu_data)
 summary(modelx)
+
+modely0 <- lm(cases_per_capita ~ cases_per_capita_7_days_ago, data = MA_aclu_data)
+summary(modely0)
+modely <- lm(cases_per_capita ~ frac_released + cases_per_capita_7_days_ago, data = MA_aclu_data)
+summary(modely)
+
+AIC(modely0)
+AIC(modely)
 ```
 
 Notes: I think the way I calculate R^2 is wrong
